@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; form-action 'none'">
+<link rel="icon" href="data:,">
+<title>Sonic 2 — bring your own ROM</title>
+<style>
+  :root { --bg:#0e1016; --panel:#171a23; --fg:#e9ecf3; --dim:#99a0b0; --line:#262b38;
+          --accent:#2f7fe0; --ok:#3fb562; --warn:#d8a33a; --bad:#d8503a; }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--fg);
+              font:14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif; }
+  #wrap { display:flex; flex-direction:column; height:100%; }
+
+  #game { flex:1; min-height:0; background:#000; display:flex; align-items:center; justify-content:center; }
+  #screen { max-width:100%; max-height:100%; aspect-ratio:4/3; height:100%; image-rendering:pixelated; }
+  #bar button { font:inherit; font-size:12px; padding:1px 9px; border-radius:999px; border:1px solid var(--line);
+                background:transparent; color:var(--fg); cursor:pointer; }
+
+  #pick { position:fixed; inset:0; z-index:10; display:flex; align-items:center;
+          justify-content:center; padding:24px 16px; background:var(--bg); overflow:auto; }
+  body.playing #pick { display:none; }
+  #bar { padding:7px 14px; color:var(--dim); font-size:12px; display:none;
+         gap:14px; flex-wrap:wrap; border-top:1px solid var(--line); }
+  body.playing #bar { display:flex; }
+  #bar b { color:var(--fg); font-weight:600; }
+  #bar .tag { padding:1px 7px; border:1px solid var(--line); border-radius:999px; }
+
+  .card { width:100%; max-width:620px; background:var(--panel); border:1px solid var(--line);
+          border-radius:12px; padding:24px; }
+  h1 { margin:0 0 4px; font-size:19px; letter-spacing:.2px; }
+  .sub { color:var(--dim); margin:0 0 20px; font-size:13px; }
+  .drop { border:1.5px dashed var(--line); border-radius:10px; padding:26px 20px; text-align:center;
+          cursor:pointer; transition:border-color .15s, background .15s; display:block; }
+  .drop:hover, .drop.hot { border-color:var(--accent); background:#1b2130; }
+  .drop b { color:var(--fg); }
+  .drop span { display:block; color:var(--dim); font-size:12.5px; margin-top:6px; }
+  input[type=file] { display:none; }
+  .note { margin-top:18px; padding-top:16px; border-top:1px solid var(--line);
+          color:var(--dim); font-size:12.5px; }
+  .note p { margin:0 0 8px; }
+  .note b { color:var(--fg); font-weight:600; }
+  code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11.5px;
+         background:#0b0e14; border:1px solid var(--line); border-radius:4px; padding:1px 5px; }
+  #verdict { margin-top:16px; font-size:12.5px; display:none; }
+  #verdict .row { display:flex; gap:8px; align-items:baseline; margin-bottom:4px; }
+  #verdict .k { color:var(--dim); min-width:64px; }
+  #verdict .v { font-family:ui-monospace,Menlo,monospace; font-size:11.5px; word-break:break-all; }
+  .ok { color:var(--ok); } .warn { color:var(--warn); } .bad { color:var(--bad); }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="game"><canvas id="screen" width="320" height="224"></canvas></div>
+  <div id="bar">
+    <span><b>Sonic 2</b> <span class="tag" id="tag-rom">—</span> <button id="sound">Sound: off</button></span>
+    <span>Keys: <b>Arrows</b> move · <b>Z / X / C</b> A / B / C (any jumps) · <b>Enter</b> Start</span>
+  </div>
+</div>
+
+<div id="pick">
+  <div class="card">
+    <h1>Sonic the Hedgehog 2 (Mega Drive)</h1>
+    <p class="sub">Runs the ROM you built from the
+      <a href="https://github.com/sonicretro/s2disasm" style="color:var(--accent)">sonicretro/s2disasm</a>
+      disassembly — or your own cartridge dump.</p>
+
+    <label class="drop" id="drop">
+      <b>Choose a ROM file</b>
+      <span>or drag one here &nbsp;·&nbsp; .md / .bin / .gen, 1 MB</span>
+      <input type="file" id="file" accept=".md,.bin,.gen,.smd,.68k,application/octet-stream">
+    </label>
+
+    <div id="verdict"></div>
+
+    <div class="note">
+      <p><b>Your file never leaves this machine.</b> The <code>File</code> is handed straight
+         to the emulator core (mdcore, MIT licence) in page memory — no upload, no copy into IndexedDB, no server
+         side to this page. Every off-origin request is blocked outright (the console lists
+         any that were attempted), so the page cannot talk to anything but the host it came
+         from.</p>
+      <p><b>Sound starts off.</b> Turn it on with the Sound button below the game.</p>
+      <p>The <code>sonicretro/s2disasm</code> disassembly reassembles this cartridge byte for byte (Rev B from its <code>classics</code> branch, REV01 from <code>master</code>).</p>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  const q = new URLSearchParams(location.search);
+
+  // A nonce so an automated driver can prove it attached to THIS tab, and not to another
+  // agent's browser that happened to be on the same debugging port.
+  window.__S2_NONCE = q.get("nonce") || null;
+
+  // ---- same-origin lockdown -------------------------------------------------------
+  // Installed before the core loads. Nothing here needs the network beyond fetching
+  // mdcore.wasm from this origin; a page holding someone's cartridge dump should not be
+  // able to talk off-origin at all. The CSP above enforces the same thing.
+  const blocked = [];
+  window.__S2_BLOCKED = blocked;
+  (function lockdown() {
+    const sameOrigin = (u) => {
+      try { return new URL(u, location.href).origin === location.origin; }
+      catch (e) { return false; }
+    };
+    const deny = (what, u) => { blocked.push(what + " " + u); console.log(`S2: blocked off-origin ${what} ${u}`); };
+
+    const realFetch = window.fetch;
+    window.fetch = function (input) {
+      const u = (typeof input === "string") ? input : (input && input.url) || "";
+      if (u && !sameOrigin(u)) {
+        deny("fetch", u);
+        // Resolve rather than reject: a caller with no .catch() would otherwise surface
+        // an unhandled rejection in the console instead of a visible 403.
+        return Promise.resolve(new Response("blocked", { status: 403, statusText: "blocked" }));
+      }
+      return realFetch.apply(this, arguments);
+    };
+
+    const realOpen = XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open = function (method, url) {
+      if (url && !sameOrigin(url)) { deny("xhr", url); arguments[1] = "about:blank"; }
+      return realOpen.apply(this, arguments);
+    };
+
+    if (window.WebSocket) window.WebSocket = function (url) { deny("websocket", url); throw new Error("blocked"); };
+    if (navigator.sendBeacon) navigator.sendBeacon = function (url) { deny("beacon", url); return false; };
+  })();
+
+  // ---- test instrumentation -------------------------------------------------------
+  // ?mute=hard routes every AudioContext through a zero gain node, so nothing the
+  // emulator or its remembered settings can do will make a sound.
+  if (q.get("mute") === "hard") {
+    for (const name of ["AudioContext", "webkitAudioContext"]) {
+      const Real = window[name];
+      if (!Real) continue;
+      window[name] = function (...a) {
+        const ctx = new Real(...a);
+        const g = ctx.createGain();
+        g.gain.value = 0;
+        g.connect(ctx.destination);
+        Object.defineProperty(ctx, "destination", { get: () => g, configurable: true });
+        return ctx;
+      };
+      window[name].prototype = Real.prototype;
+    }
+    console.log("S2: hard mute installed");
+  }
+
+  // ---- ROM intake -----------------------------------------------------------------
+  const els = {
+    drop: document.getElementById("drop"), file: document.getElementById("file"),
+    verdict: document.getElementById("verdict"),
+    tagRom: document.getElementById("tag-rom"), sound: document.getElementById("sound"),
+  };
+
+  // sha1 -> which build of s2disasm produces it.
+  const KNOWN = {
+    "2af1003247aec262089c8df22d05e80d04a1b5e4": "Rev B (Sonic Classics) · byte-exact",
+    "be4ac9b0800ba4af393543c8db9c6906432f8f85": "Rev B, s2disasm checksum",
+    "8bca5dcef1af3e00098666fd892dc1c2a76333f9": "REV01 · byte-exact"
+  };
+
+  const hex = (buf) => Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, "0")).join("");
+  const ascii = (u8) => String.fromCharCode(...u8).replace(/\0/g, " ");
+
+  async function inspect(bytes) {
+    const u8 = new Uint8Array(bytes);
+    const out = { size: u8.length, sha1: null, serial: null, rev: "unknown" };
+    if (u8.length >= 0x200) {
+      out.serial = ascii(u8.subarray(0x180, 0x18E));
+    }
+    if (window.crypto && crypto.subtle) {
+      try { out.sha1 = hex(await crypto.subtle.digest("SHA-1", bytes)); } catch (e) {}
+    }
+    return out;
+  }
+
+  function renderVerdict(info) {
+    const known = info.sha1 && KNOWN[info.sha1];
+    const isS2 = /00001051/.test(info.serial || "");
+    let headline;
+    if (known) {
+      headline = `<span class="ok">Recognised: ${known} — a ROM s2disasm builds.</span>`;
+    } else if (isS2) {
+      headline = `<span class="warn">A Sonic 2 header, but not a hash s2disasm builds. Loading it anyway.</span>`;
+    } else {
+      headline = `<span class="bad">Not a recognised Sonic 2 cartridge header. Loading it anyway.</span>`;
+    }
+    const cls = known ? "ok" : "warn";
+    els.verdict.innerHTML =
+      `<div style="margin-bottom:10px">${headline}</div>` +
+      `<div class="row"><span class="k">file</span><span class="v">${info.size.toLocaleString()} bytes</span></div>` +
+      (info.sha1 ? `<div class="row"><span class="k">sha1</span><span class="v ${cls}">${info.sha1}</span></div>` : "");
+    els.verdict.style.display = "block";
+    els.tagRom.textContent = known || (isS2 ? "Sonic 2" : "unrecognised");
+  }
+
+  let started = false;
+  async function accept(file) {
+    if (started) return;
+    // Read once: the same bytes are hashed for identification and handed to the core.
+    const bytes = await file.arrayBuffer();
+    const info = await inspect(bytes);
+    renderVerdict(info);
+    console.log(`S2: picked ${file.name} — ${info.size} bytes, serial '${info.serial}', sha1 ${info.sha1}`);
+    setTimeout(() => { started = true; boot(new Uint8Array(bytes)); }, KNOWN[info.sha1] ? 350 : 1400);
+  }
+
+  els.file.addEventListener("change", (e) => { if (e.target.files[0]) accept(e.target.files[0]); });
+  ["dragenter", "dragover"].forEach(t => els.drop.addEventListener(t, (e) => {
+    e.preventDefault(); els.drop.classList.add("hot"); }));
+  ["dragleave", "drop"].forEach(t => els.drop.addEventListener(t, () => els.drop.classList.remove("hot")));
+  els.drop.addEventListener("drop", (e) => {
+    e.preventDefault();
+    if (e.dataTransfer.files[0]) accept(e.dataTransfer.files[0]);
+  });
+
+  // ---- emulator -------------------------------------------------------------------
+  // mdcore: a Mega Drive core written for this project, MIT licence, see THIRD-PARTY-NOTICES.txt.
+  // Keys: arrows, Z/X/C (or A/S/D) = A/B/C, Enter = Start; gamepads are picked up too.
+  async function boot(rom) {
+    document.body.classList.add("playing");
+    const { MDCore } = await import("./mdcore.js");
+    const md = await MDCore.create(document.getElementById("screen"), { wasmUrl: "mdcore.wasm" });
+    window.mdcore = md;                          // tests read work RAM through md.ram()
+    md.load(rom);
+    md.start();
+    els.sound.addEventListener("click", async () => {
+      if (md.audio) { await md.disableAudio(); els.sound.textContent = "Sound: off"; }
+      else { await md.enableAudio(0.8); els.sound.textContent = q.get("mute") === "hard" ? "Sound: on (hard-muted)" : "Sound: on"; }
+    });
+    const c = document.getElementById("screen");
+    console.log(`S2: game started — canvas ${c.width}x${c.height}, `
+              + `blocked ${blocked.length} off-origin request(s)`);
+  }
+
+  // ---- local automation hook ------------------------------------------------------
+  // ?rom=<same-origin url> skips the picker for the headless test. It goes through the
+  // same File path the picker uses, so the test exercises the shipped code.
+  const romUrl = q.get("rom");
+  if (romUrl) {
+    fetch(romUrl).then(r => r.arrayBuffer())
+      .then(b => accept(new File([b], romUrl.split("/").pop(), { type: "application/octet-stream" })))
+      .catch(e => console.log("S2: ?rom fetch failed " + e));
+  }
+})();
+</script>
+</body>
+</html>
