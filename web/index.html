@@ -55,7 +55,7 @@
 <div id="wrap">
   <div id="game"><canvas id="screen" width="320" height="224"></canvas></div>
   <div id="bar">
-    <span><b>Sonic 2</b> <span class="tag" id="tag-rom">—</span> <button id="sound">Sound: off</button></span>
+    <span><b>Sonic 2</b> <span class="tag" id="tag-rom">—</span> <button id="sound">Sound: on</button></span>
     <span>Keys: <b>Arrows</b> move · <b>Z / X / C</b> A / B / C (any jumps) · <b>Enter</b> Start</span>
   </div>
 </div>
@@ -81,7 +81,7 @@
          side to this page. Every off-origin request is blocked outright (the console lists
          any that were attempted), so the page cannot talk to anything but the host it came
          from.</p>
-      <p><b>Sound starts off.</b> Turn it on with the Sound button below the game.</p>
+      <p><b>Sound is on</b> once the game starts. The Sound button below the game turns it off.</p>
       <p>The <code>sonicretro/s2disasm</code> disassembly reassembles this cartridge byte for byte (Rev B from its <code>classics</code> branch, REV01 from <code>master</code>).</p>
     </div>
   </div>
@@ -230,6 +230,13 @@
     window.mdcore = md;                          // tests read work RAM through md.ram()
     md.load(rom);
     md.start();
+    const label = () => q.get("mute") === "hard" ? "Sound: on (hard-muted)" : "Sound: on";
+    try {
+      await md.enableAudio(0.8);
+      els.sound.textContent = label();
+      const wake = () => { if (md.audio && md.audio.ac.state === "suspended") md.audio.ac.resume(); };
+      window.addEventListener("keydown", wake); window.addEventListener("pointerdown", wake);
+    } catch (e) { console.log("S2: audio did not start " + e); }
     els.sound.addEventListener("click", async () => {
       if (md.audio) { await md.disableAudio(); els.sound.textContent = "Sound: off"; }
       else { await md.enableAudio(0.8); els.sound.textContent = q.get("mute") === "hard" ? "Sound: on (hard-muted)" : "Sound: on"; }
