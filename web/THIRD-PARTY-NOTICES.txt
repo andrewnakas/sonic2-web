@@ -1,0 +1,88 @@
+THIRD-PARTY NOTICES — sonic2 (Sonic the Hedgehog 2, s2disasm)
+===========================================================
+
+No ROM, and no bytes extracted from a ROM, are present in this repository or in the
+page it publishes. The page runs whatever Mega Drive ROM the person loads from their
+own disk: it is read with the File API, handed to the emulator core in page memory,
+and never sent anywhere.
+
+(This file is .txt, not .md, on purpose: ".md" is both the Markdown extension and the
+Mega Drive ROM extension, and .gitignore excludes *.md as a ROM type.)
+
+
+1. SHIPPED IN THE PAGE
+----------------------
+
+mdcore — Mega Drive / Genesis emulator core
+    version   0.1.0 (commit 3db92517338179ea7797af1559255ccecaffb237)
+    licence   MIT (full text below; also shipped beside the page as LICENSE.mdcore)
+    source    https://github.com/andrewnakas/mdcore
+    files     web/mdcore.wasm      sha1   019b7b68e2e93101c9eef9440feea257b3be144e
+                                       sha256 cb10fe9d96486800295877f4e3543f8ccb551d9e56d1b222fe9f608015621335
+              web/mdcore.js        the ES-module front end
+              web/audio-worklet.js the audio worklet
+              web/LICENSE.mdcore   the licence text, verbatim
+    vendored unmodified from mdcore's own web/ directory (byte-identical).
+
+    mdcore was written from scratch from the Motorola, Zilog and Sega hardware
+    manuals. Per its README it contains no code from Genesis Plus GX, PicoDrive,
+    BlastEm or any other emulator, and it is freestanding WebAssembly — no
+    emscripten runtime, no libc, no imports.
+
+web/index.html is this project's own code, under the same terms as this repository.
+
+
+2. FETCHED AT BUILD TIME, NEVER COMMITTED HERE
+----------------------------------------------
+
+sonicretro/s1disasm — the disassembly this project assembles
+    pinned    f74712a26c7568544457f5e28d33f7933b2e3660
+    source    https://github.com/sonicretro/s1disasm
+    terms     informational / educational use, per the project's own DISCLAIMER.
+    build.sh fetches it into upstream/ (gitignored) rather than vendoring it,
+    because it carries Sonic 1's own art, mappings and music as binary files.
+
+The Macro Assembler AS ("asl", "p2bin")
+    licence   GPL-2.0
+    source    https://github.com/Clownacy/asl-releases (per s1disasm's build_tools/AS.txt)
+    prebuilt Linux binaries bundled inside s1disasm; used to assemble, not shipped.
+
+
+3. NOT INCLUDED
+---------------
+
+Nothing from EmulatorJS, Genesis Plus GX or PicoDrive is distributed, linked or
+fetched by this page. An earlier version of the page used EmulatorJS with the
+genesis_plus_gx core; both were removed on 2026-10-05 because Genesis Plus GX and
+PicoDrive both carry "Redistributions may not be sold, nor may they be used in a
+commercial product or activity", which is not an open-source licence.
+
+Genesis Plus GX was built locally, outside this repository, purely as a test oracle
+to measure mdcore's output against. It is not shipped, not linked, and not required
+to build or run anything here.
+
+
+4. MIT LICENCE — mdcore 0.1.0
+-----------------------------
+
+MIT License
+
+Copyright (c) 2026 mdcore contributors
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
